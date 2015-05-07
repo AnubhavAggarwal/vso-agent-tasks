@@ -1,42 +1,22 @@
 param (
     [string]$environmentName,
     [string]$machineNames, 
-    [string]$sourcePackage,
     [string]$scriptPath,
     [string]$scriptArguments,
     [string]$initializationScriptPath,
     [string]$runPowershellInParallel
     )
 
-Write-Verbose "Entering script RemotePowerShellRunner.ps1" -Verbose
+Write-Verbose "Entering script RunPowerShellOnTargetMachines.ps1" -Verbose
 Write-Verbose "environmentName = $environmentName" -Verbose
 Write-Verbose "machineNames = $machineNames" -Verbose
-Write-Verbose "sourcePackage = $sourcePackage" -Verbose
 Write-Verbose "scriptPath = $scriptPath" -Verbose
 Write-Verbose "scriptArguments = $scriptArguments" -Verbose
 Write-Verbose "initializationScriptPath = $initializationScriptPath" -Verbose
+Write-Verbose "runPowershellInParallel = $runPowershellInParallel" -Verbose
 
+. ./RunPowerShellHelper.ps1
 . ./RunPowerShellJob.ps1
-
-function Output-ResponseLogs
-{
-    param([string]$operationName,
-          [string]$fqdn,
-          [object]$deploymentResponse)
-
-    Write-Verbose "Finished $operationName operation" -Verbose
-
-    if ([string]::IsNullOrEmpty($deploymentResponse.DeploymentLog) -eq $false)
-    {
-        Write-Verbose "Deployment logs for $operationName operation on $fqdn " -Verbose
-        Write-Verbose ($deploymentResponse.DeploymentLog | Format-List | Out-String) -Verbose
-    }
-    if ([string]::IsNullOrEmpty($deploymentResponse.ServiceLog) -eq $false)
-    {
-        Write-Verbose "Service logs for $operationName operation on $fqdn " -Verbose
-        Write-Verbose ($deploymentResponse.ServiceLog | Format-List | Out-String) -Verbose
-    }
-}
 
 import-module "Microsoft.TeamFoundation.DistributedTask.Task.Common"
 import-module "Microsoft.TeamFoundation.DistributedTask.Task.DevTestLabs"
@@ -58,41 +38,58 @@ $envOperationId = Invoke-EnvironmentOperation -EnvironmentName $environmentName 
 Write-Verbose "EnvironmentOperationId = $envOperationId" -Verbose
 $envOperationStatus = "Passed"
 
-if($runPowershellInParallel -eq "false")
+if($runPowershellInParallel -eq "false" -or  ( $resources.Count -eq 1 ) )
 {
     foreach ($resource in $resources)
     {    
         $machine = $resource.Name
-        Write-Output "Deployment Started for - $machine"
-
-        $deploymentResponse = Invoke-Command -ScriptBlock $RunPowershellJob -ArgumentList $environmentName, $envOperationId, $machine, $scriptPath, $port, $scriptArguments, $initializationScriptPath, $credential, $connection
-
+        
+		Write-Output "Deployment Started for - $machine"
+		
+		$resOperationId = Invoke-ResourceOperation -EnvironmentName $environmentName -ResourceName $machine -EnvironmentOperationId $envOperationId -Connection $connection -ErrorAction Stop
+		
+		Write-Verbose "ResourceOperationId = $resOperationId" -Verbose
+		
+        $deploymentResponse = Invoke-Command -ScriptBlock $RunPowershellJob -ArgumentList $machine, $scriptPath, $port, $scriptArguments, $initializationScriptPath, $credential
+		
         Output-ResponseLogs -operationName "deployment" -fqdn $machine -deploymentResponse $deploymentResponse
 
         $status = $deploymentResponse.Status
 
         Write-Output "Deployment Status for machine $machine : $status"
+		
+		Write-Verbose "Do complete ResourceOperation for  - $machine" -Verbose
+		
+		CompleteResourceOperation -environmentName $environmentName -envOperationId $envOperationId -resOperationId $resOperationId -connection $connection -deploymentResponse $deploymentResponse
 
         if ($status -ne "Passed")
         {
             Complete-EnvironmentOperation -EnvironmentName $environmentName -EnvironmentOperationId $envOperationId -Status "Failed" -Connection $connection -ErrorAction Stop
 
-            throw $response.Error;
+            throw $deploymentResponse.Error;
         }
     }
 }
 else
 {
-    $Jobs = New-Object "System.Collections.Generic.Dictionary``2[int, string]"
+	[hashtable]$Jobs = @{} 
 
     foreach($resource in $resources)
     {
         $machine = $resource.Name
-	
-        $job = Start-Job -ScriptBlock $RunPowershellJob -ArgumentList $environmentName, $envOperationId, $machine, $scriptPath, $port, $scriptArguments, $initializationScriptPath, $credential, $connection
+		[hashtable]$resourceProperties = @{} 
+		
+		$resOperationId = Invoke-ResourceOperation -EnvironmentName $environmentName -ResourceName $machine -EnvironmentOperationId $envOperationId -Connection $connection -ErrorAction Stop
+		
+		Write-Verbose "ResourceOperationId = $resOperationId" -Verbose
+		
+		$resourceProperties.machineName = $machine
+		$resourceProperties.resOperationId = $resOperationId
+		
+        $job = Start-Job -ScriptBlock $RunPowershellJob -ArgumentList $machine, $scriptPath, $port, $scriptArguments, $initializationScriptPath, $credential
 
-        $Jobs.Add($job.Id, $machine)
-    
+        $Jobs.Add($job.Id, $resourceProperties)
+         
         Write-Output "Deployment Started for - $machine"
     }
     While (Get-Job)
@@ -102,8 +99,9 @@ else
          {
              if($job.State -ne "Running")
              {
-                 $output = Receive-Job -Job $job
+                 $output = Receive-Job -Id $job.Id
                  Remove-Job $Job
+
                  $status = $output.Status
 
                  if($status -ne "Passed")
@@ -111,15 +109,27 @@ else
                      $envOperationStatus = "Failed"
                  }
             
-                 $machineName = $Jobs.Item($job.Id)
-
-                 Output-ResponseLogs -operationName "Deployment" -fqdn $machineName -deploymentResponse $output
+                 $machineName = $Jobs.Item($job.Id).machineName
+				 $resOperationId = $Jobs.Item($job.Id).resOperationId
+				 
+				 Output-ResponseLogs -operationName "Deployment" -fqdn $machineName -deploymentResponse $output
+				 
                  Write-Output "Deployment Status for machine $machineName : $status"
+				 
+				 Write-Verbose "Do complete ResourceOperation for  - $machine" -Verbose
+				 
+				 CompleteResourceOperation -environmentName $environmentName -envOperationId $envOperationId -resOperationId $resOperationId -connection $connection -deploymentResponse $output
+                 
               } 
         }
     }
 }
 
-Complete-EnvironmentOperation -EnvironmentName $environmentName -EnvironmentOperationId $envOperationId -Status "Passed" -Connection $connection -ErrorAction Stop
+Complete-EnvironmentOperation -EnvironmentName $environmentName -EnvironmentOperationId $envOperationId -Status $envOperationStatus -Connection $connection -ErrorAction Stop
 
-Write-Verbose "Leaving script RemotePowerShellRunner.ps1" -Verbose
+if($envOperationStatus -ne "Passed")
+{
+    throw "deployment on one or more machine failed."
+}
+
+Write-Verbose "Leaving script RunPowerShellOnTargetMachines.ps1" -Verbose

@@ -127,6 +127,11 @@ function Update-LocalEnvironmentAttributes()
 		{
 			throw "Cannot find environment attribute with key: $($attribute.Key)"
 		}
+		
+		if(-not ($jsonObject.SelectToken($attribute.Key).Value -is [String]))
+		{
+			throw "The attribute with key: '$($attribute.Key)' is not a leaf attribute"				
+		}
 
 		$jsonObject.SelectToken($attribute.Key).Value = $attribute.Value	
 	}
@@ -150,10 +155,10 @@ try
     Import-Module "Microsoft.TeamFoundation.DistributedTask.Task.Deployment.Chef"
 
     #fetching chef subscription details
-    $connectedServiceDetails = Get-ConnectedServiceDetails -Context $distributedTaskContext -ConnectedServiceName $connectedServiceName
+    $connectedServiceDetails = Get-ServiceEndpoint -Context $distributedTaskContext -Name $connectedServiceName
 
 	#setting up chef repo with the chef subscription details fetched before
-    Setup-ChefRepo $connectedServiceDetails
+    Initialize-ChefRepo $connectedServiceDetails
 
 	#this is the poll interval for checking in between runs
 	$pollIntervalForRunsInSeconds = 60;

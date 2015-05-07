@@ -69,7 +69,7 @@
         "120":"120",
         "180":"180",
         "240":"240",
-        "300":"300",
+        "300":"300"
       }
     },
     {
@@ -95,7 +95,7 @@
         "Japan West": "Japan West (Osaka Prefecture)",
         "Brazil South": "Brazil South (Sao Paulo State)",
         "Australia East": "Australia East (New South Wales)",
-        "Australia Southeast": "Australia Southeast (Victoria)",
+        "Australia Southeast": "Australia Southeast (Victoria)"
       }
     },
     {
@@ -124,7 +124,7 @@
       "helpMarkDown": "Add the variable Alternate.VsoAccountUrl in Variables tab pointing to Cloud-based Load Test service endpoint.",
       "groupName": "hybrid",
       "required": false
-    },
+    }
   ],
   "instanceNameFormat": "Quick Perf Test $(testName)",
   "execution": {
@@ -135,5 +135,4 @@
     }
   }
 }
-
 
