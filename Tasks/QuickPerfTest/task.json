@@ -13,15 +13,16 @@
   "version": {
     "Major": 1,
     "Minor": 0,
-    "Patch": 0
+    "Patch": 1
   },
   "demands": [
-    "msbuild"
+    "msbuild",
+    "azureps"
   ],
   "groups": [
     {
-      "name": "advanced",
-      "displayName": "Advanced",
+      "name": "hybrid",
+      "displayName": "Mixed (On-premises and Cloud) Configuration",
       "isExpanded": false
     }
   ],
@@ -76,7 +77,6 @@
       "type": "pickList",
       "label": "Geo Location",
       "required": false,
-      "groupName": "advanced",
       "helpMarkDown": "Geographical region from where the load will be generated.",
       "defaultValue": "Default",
       "options": {
@@ -102,26 +102,28 @@
       "name": "Username",
       "type": "string",
       "label": "Alternate credential username",
-      "defaultValue": "$(System.Auth.UserName)",
-      "groupName":"advanced",
+      "defaultValue": "$(Alternate.Username)",
+      "helpMarkDown": "Add the variable Alternate.Username in Variables tab with appropriate value.",
+      "groupName":"hybrid",
       "required": true
     },
     {
       "name": "Password",
       "type": "string",
       "label": "Alternate credential password",
-      "defaultValue": "$(System.Auth.Password)",
-      "groupName":"advanced",
+      "defaultValue": "$(Alternate.Password)",
+      "helpMarkDown": "Add the variable Alternate.Password in Variables tab with appropriate value.",
+      "groupName":"hybrid",
       "required": true
     },
     {
       "name": "CltAccountUrl",
       "type": "string",
       "label": "VSO Account URL",
-      "defaultValue": "$(System.TeamFoundationServerUri)",
-      "groupName": "advanced",
-      "required": false,
-      "helpMarkDown": "Visual Studio Online Account's CLT URL."
+      "defaultValue": "$(Alternate.VsoAccountUrl)",
+      "helpMarkDown": "Add the variable Alternate.VsoAccountUrl in Variables tab pointing to Cloud-based Load Test service endpoint.",
+      "groupName": "hybrid",
+      "required": false
     },
   ],
   "instanceNameFormat": "Quick Perf Test $(testName)",
@@ -133,4 +135,5 @@
     }
   }
 }
+
 
